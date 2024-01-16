@@ -1,0 +1,111 @@
+---
+title: "ISYE HW1"
+output:
+  html_document: default
+  pdf_document: default
+date: "`r Sys.Date()`"
+---
+
+**Question 2.1**
+
+*Describe a situation or problem from your job, everyday life, current events, etc., for which a classification model would be appropriate. List some (up to 5) predictors that you might use.*
+
+
+I could use the classification model to optimize my rental business by predicting the occupancy of the properties during a specific time period. The informed decisions could help ensure that the properties are marketed effectively, priced competitively, and occupied at optimal levels throughout the year. 
+Predictors:
+Pricing trends
+Seasonal trends 
+Local events 
+Historical booking history
+
+
+**Question 2.2**
+
+*The files credit_card_data.txt (without headers) and credit_card_data-headers.txt (with headers) contain a dataset with 654 data points, 6 continuous and 4 binary predictor variables.  It has anonymized credit card applications with a binary response variable (last column) indicating if the application was positive or negative. The dataset is the “Credit Approval Data Set” from the UCI Machine Learning Repository (https://archive.ics.uci.edu/ml/datasets/Credit+Approval) without the categorical variables and without data points that have missing values.*
+
+*1.	Using the support vector machine function ksvm contained in the R package kernlab, find a good classifier for this data. Show the equation of your classifier, and how well it classifies the data points in the full data set.  (Don’t worry about test/validation data yet; we’ll cover that topic soon.)*
+
+```{r}
+#Load the data
+data <- read.table("credit_card_data-headers.txt", header = TRUE)
+```
+
+```{r}
+#Look at the data
+head(data) 
+tail(data)
+
+#Load the package kernlab which contains ksvm
+library(kernlab)
+```
+
+```{r}
+#Run the model; use the ksvm function with simple linear kernel Vanilladot
+#convert to matrix format 
+model1 <- ksvm(as.matrix(data[,1:10]),as.factor(data[,11]), C = 100, scaled = TRUE, kernel = "vanilladot", type = "C-svc")
+
+#Calculate coefficients 
+a <- colSums(model1@xmatrix[[1]]* model1@coef[[1]])
+print(a)
+ 
+#Calculate a0
+a0 <- -model1@b
+print(a0)
+```
+
+```{r}
+#Show the model predictions 
+pred <- predict(model1,data[,1:10])
+```
+
+```{r}
+#Test the accuracy of the model’s predictions
+accuracy <- sum(pred == data[,11])/nrow(data)* 100
+print(accuracy)
+# 0.86391.. -> 86.391%, This means the models’ accuracy is 86.391% 
+
+#I calculated the accuracy at different C values and found that adjusting the value of C did not change the outcome of the model. 
+
+#the classifier’s equation: -0.001A1 - 0.00117A2 - 0.0016A3 + 0.003A8 + 1.0049A9 - 0.0028A10 + 0.00026A11 - 0.0005A12 - 0.0012A14 + 0.10636A15 + 0.08158
+```
+
+
+*2.	You are welcome, but not required, to try other (nonlinear) kernels as well; we’re not covering them in this course, but they can sometimes be useful and might provide better predictions than vanilladot.*
+
+
+*3.	Using the k-nearest-neighbors classification function kknn contained in the R kknn package, suggest a good value of k, and show how well it classifies that data points in the full data set.  Don’t forget to scale the data (scale=TRUE in kknn).*
+
+```{r}
+#load package 
+library(kknn)
+
+kknn_accuracy_test = function(Z){
+  Pred_kknn <- rep(0,nrow(data))
+  for (i in 1:nrow(data)){
+    
+    #model creation using scaled data; ensuring it doesnt use i itself 
+    kknn_model <- kknn(R1~A1+A2+A3+A8+A9+A10+A11+A12+A14+A15, data[-i,], data[i,], k = Z, scale = TRUE)
+    
+    #to round values
+    Pred_kknn[i] <- as.integer(fitted(kknn_model) + 0.5)
+  }
+  
+  #accuracy calculation
+  accuracy_out <- sum(Pred_kknn == data[,11]) / nrow(data)
+  
+  return(accuracy_out)
+}
+acc <- rep(0,20) 
+for (Z in 1:20){
+  acc[Z] = kknn_accuracy_test(Z)
+}
+
+#accuracy percentage 
+kknn_acc = as.matrix(acc * 100)
+
+kknn_acc
+#maximum accuracy is 85.321%
+#12 and 15 have the highest accuracy.
+
+```
+
