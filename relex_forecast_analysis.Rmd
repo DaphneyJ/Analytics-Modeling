@@ -1,0 +1,272 @@
+---
+title: "Forecast Analysis"
+author: "Daphney"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+## Forecast Analysis
+
+This report is an analysis of forecast accuracy for products, designed to provide insights that can improve inventory management, sales,  optimize stock availability, and enhance the supply chain. Using monthly forecast and actual sales data, I evaluated the accuracy and reliability of forecasts through statistical metrics like Mean Absolute Percentage Error (MAPE) and Mean Absolute Error (MAE). 
+
+
+### Objectives
+
+1. **Evaluate Forecast Accuracy**: quantifies the reliability of predictions for each product. Accurate forecasts are essential for aligning supply with demand and reducing costs associated with overstocking and stockouts.
+  
+2. **Identify High-Impact Products**: Identify products with high discrepancies between forecasted and actual sales. 
+
+
+
+```{r}
+rm(list=ls())
+
+#Load Data
+forecast_data_original <- read.csv("forecast.csv", header = TRUE)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+#Load libraries
+library(dplyr) 
+library(tidyr )
+library(ggplot2)
+```
+
+
+### Data Preprocessing 
+
+
+```{r}
+#Remove unecessary columns
+forecast_data <- forecast_data_original[-c(14,15)]
+
+#Change column names
+colnames(forecast_data)[3] <- c("Forecast.Jan")
+colnames(forecast_data)[4] <- c("Forecast.Feb")
+```
+
+
+```{r}
+#Change data type to numerical
+str(forecast_data)
+forecast_data$Actual.Jan <- as.numeric(forecast_data$Actual.Jan)
+forecast_data$Actual.Feb <- as.numeric(forecast_data$Actual.Feb)
+str(forecast_data)
+```
+
+
+```{r}
+#Check for missing  values
+any(is.na(forecast_data))
+sum(is.na(forecast_data))
+colSums(is.na(forecast_data)) 
+```
+
+
+```{r}
+#Remove missing values
+forecast_data <- na.omit(forecast_data)
+any(is.na(forecast_data))
+```
+
+
+
+### Analysis
+
+
+```{r}
+#Calculate Absolute Error %
+forecast_data <- forecast_data %>%
+  mutate(
+    AbsoluteError.Jan = abs(Actual.Jan - Forecast.Jan),
+    PercentageError.Jan = abs((Actual.Jan - Forecast.Jan) / Actual.Jan) * 100,
+    AbsoluteError.Feb = abs(Actual.Feb - Forecast.Feb),
+    PercentageError.Feb = abs((Actual.Feb - Forecast.Feb) / Actual.Feb) * 100
+  )
+
+```
+
+
+```{r}
+#Calculate Mean Absolute error for each product
+summary_data <- forecast_data %>%
+  group_by(Product.code) %>%
+  summarize(
+    MAPE.Jan = mean(PercentageError.Jan, na.rm = TRUE),
+    MAE.Jan = mean(AbsoluteError.Jan, na.rm = TRUE),
+    MAPE.Feb = mean(PercentageError.Feb, na.rm = TRUE),
+    MAE.Feb = mean(AbsoluteError.Feb, na.rm = TRUE)
+  )
+```
+
+
+This code resulted in infinity values which effected the MAE calculation, so I will remove the infinity values from the calculation. 
+
+
+The infinity values mean that the products had zero sales for that month, no demand. It's not possible to calculate MAE, because you cannot divide by zero (the amount of sales). 
+
+
+I'll exclude them and replace these errors with a placeholder, "No Sales", to show that these products were unsold during the period.
+
+
+
+```{r}
+#Replace the infinity (division by 0 errors) with placeholder
+forecast_data <- forecast_data %>%
+  mutate(
+    PercentageError.Jan = ifelse(Actual.Jan == 0, "No Sales", abs((Actual.Jan - Forecast.Jan) / Actual.Jan) * 100),
+    PercentageError.Feb = ifelse(Actual.Feb == 0, "No Sales", abs((Actual.Feb - Forecast.Feb) / Actual.Feb) * 100)
+  )
+
+```
+
+
+```{r}
+#Calculate MAPE for January,  excluding "No Sales"
+MAPE.Jan <- forecast_data %>%
+  filter(!is.na(as.numeric(PercentageError.Jan))) %>%
+  summarize(MAPE = mean(as.numeric(PercentageError.Jan), na.rm = TRUE))
+
+#Calculate MAPE for Feb,  excluding "No Sales"
+MAPE.Feb <- forecast_data %>%
+  filter(!is.na(as.numeric(PercentageError.Feb))) %>%
+  summarize(MAPE = mean(as.numeric(PercentageError.Feb), na.rm = TRUE))
+
+```
+
+```{r}
+#Monthly mean absolute error percentages 
+MAPE.Jan
+MAPE.Feb
+```
+
+
+January MAPE = 60.72% without removing NA and 60.50757% after removing NA.
+A MAPE of 60.72% indicates that on average, forecasts for January were off by about 60.72% compared to actual sales. 
+
+February MAPE = 109.70% without removing NA and 109.7269% after removing NA. A MAPE of 109.70% is very high, implying the forecasts were on average more than 100% off from the actual sales. The plot shows a product code 56631 reaching nearly 8000% in MAPE. This means the forecast has extremely poor forecast accuracy in February. 
+
+
+Both January and February have relativley high MAPE, with Feburary having an even higher MAPE than January. This points to a greater forecast error likely due to increased volatility in demand or inconsistencies in forecast models.
+
+The outlier products that contributed to this high error should be investigated further. High MAPE values, signal underlying issues that may require deeper data exploration, model adjustments, or alternative forecast approaches.
+
+
+
+### Visuals 
+
+```{r}
+#Define threshold for extreme outliers
+threshold <- 500
+
+#Boxplot of Distribution of MAE for January
+ggplot(summary_data, aes(x = "January", y = MAPE.Jan)) +
+  geom_boxplot() +
+  geom_text(
+    data = subset(summary_data, MAPE.Jan > threshold),
+    aes(label = Product.code),
+    vjust = -0.5, 
+    color = "red"
+  ) +
+  labs(title = "Distribution of MAPE for January", y = "MAPE (%)", x = "January") +
+  theme_minimal()
+```
+
+
+Shows the spread of MAPE values across different products for January. The extreme outliers at the top indicate products with very high MAPE percentages. The red-labeled points are outlier products.
+
+
+January:
+shows most products have relatively low MAPE values, but there are some significant outliers. (Product code 56631, 95597, 58821, and 25011).
+
+
+
+```{r}
+#February with labeled outliers
+ggplot(summary_data, aes(x = "February", y = MAPE.Feb)) +
+  geom_boxplot() +
+  geom_text(
+    data = subset(summary_data, MAPE.Feb > threshold),
+    aes(label = Product.code),
+    vjust = -0.5,
+    color = "red"
+  ) +
+  labs(title = "Distribution of MAPE for February", y = "MAPE (%)", x = "February") +
+  theme_minimal()
+
+```
+
+
+February: 
+shows even more severe outliers than January. The increase in MAPE for February compared to January indicates the forecasting issues have intensified or demand volatility has risen. Either the forecast model does not adapt well to February demand patterns, or there were unexpected shifts in the marketplace.
+
+
+
+**Recommendations:**
+investigate the products marked as outliers for root causes of the high errors. such as Demand volatility, seasonality, inaccurate historical data, or limitations in the forecast model could be an issue.
+
+consider implementing different forecasting techniques or even machine learning predictive models that can handle demand fluctuations more accurately.
+
+I recommend doing a time series analysis to explore seasonality fluctuations.
+
+
+
+```{r, message=FALSE, warning=FALSE}
+#Error Trends Over Time
+cumulative_error <- summary_data %>%
+  gather(Month, Error, starts_with("MAE")) %>%
+  mutate(Month = gsub("MAE.", "", Month))
+
+ggplot(cumulative_error, aes(x = Month, y = Error, group = Product.code)) +
+  geom_line(alpha = 0.3) +
+  labs(title = "Cumulative MAE Over Time by Product", x = "Month", y = "MAE") +
+  theme_minimal() +
+  geom_smooth()
+
+```
+
+
+Shows the cumulative MAE for each product across the months. The products with a steeper increasing line have higher forecast errors over time and need further investigation.
+
+Most products are clustered near the bottom, with low MAE, but a few outliers have increasing error values from jan to feb.
+
+
+```{r}
+#Count of Products with Infinite MAPE (No Sales)
+#columns for No Sales (infinite MAPE)
+summary_data$NoSales_Jan <- ifelse(is.infinite(summary_data$MAPE.Jan), "No Sales", "Has Sales")
+summary_data$NoSales_Feb <- ifelse(is.infinite(summary_data$MAPE.Feb), "No Sales", "Has Sales")
+
+# January
+ggplot(summary_data, aes(x = NoSales_Jan)) +
+  geom_bar(fill = "skyblue") +
+  labs(title = "Count of Products with No Sales (Infinite MAPE) - January", x = "Sales Status", y = "Count") +
+  theme_minimal()
+
+#  February
+ggplot(summary_data, aes(x = NoSales_Feb)) +
+  geom_bar(fill = "skyblue") +
+  labs(title = "Count of Products with No Sales (Infinite MAPE) - February", x = "Sales Status", y = "Count") +
+  theme_minimal()
+```
+
+
+shows the number of products with recorded sales vs those with no sales for January and February, which resulted in Infinite MAPE values.
+
+
+Only a small percentage having no sales in both months (and hence Infinite MAPE values). This can imply that eventhough forecast errors are high, they are not mostly due to missing sales but rather from other forecasting inaccuracies.
+
+
+```{r}
+#Table of Top Products by Absolute Forecast Error: 
+library(knitr)
+summary_data %>%
+  arrange(desc(MAE.Jan)) %>%
+  select(Product.code, MAPE.Jan, MAE.Jan, MAPE.Feb, MAE.Feb) %>%
+  kable()
+```
+
